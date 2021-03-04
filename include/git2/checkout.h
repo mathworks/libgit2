@@ -188,6 +188,12 @@ typedef enum {
 	GIT_CHECKOUT_CONFLICT_STYLE_ZDIFF3 = (1u << 25),
 
 	/**
+	 *  Remove files that are excluded by the sparse-checkout ruleset.
+	 * 	Does nothing when GIT_CHECKOUT_SAFE is set.
+	 */
+	GIT_CHECKOUT_REMOVE_SPARSE_FILES = (1u << 26),
+
+	/**
 	 * Do not do a checkout and do not fire callbacks; this is primarily
 	 * useful only for internal functions that will perform the
 	 * checkout themselves but need to pass checkout options into
