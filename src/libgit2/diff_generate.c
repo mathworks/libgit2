@@ -820,7 +820,7 @@ static int maybe_modified(
 	if (!diff_pathspec_match(&matched_pathspec, diff, oitem))
 		return 0;
 
-	if (DIFF_FLAG_IS_SET(diff, GIT_DIFF_SKIP_SPARSE_FILES) &&
+	if (diff->base.opts.skip_sparse_files &&
 			git_iterator_current_skip_checkout(info->new_iter))
 		return 0;
 	
@@ -1057,7 +1057,7 @@ static int handle_unmatched_new_item(
 	bool contains_oitem;
 	
 	/* check if this item should be skipped due to sparse checkout */
-	if (DIFF_FLAG_IS_SET(diff, GIT_DIFF_SKIP_SPARSE_FILES) &&
+	if (diff->base.opts.skip_sparse_files &&
 			git_iterator_current_skip_checkout(info->new_iter))
 		return iterator_advance(&info->nitem, info->new_iter);
 
@@ -1220,7 +1220,7 @@ static int handle_unmatched_old_item(
 	if (git_index_entry_is_conflict(info->oitem))
 		delta_type = GIT_DELTA_CONFLICTED;
 
-	if ((DIFF_FLAG_IS_SET(diff, GIT_DIFF_SKIP_SPARSE_FILES) &&
+	if ((diff->base.opts.skip_sparse_files &&
 			 git_iterator_current_skip_checkout(info->new_iter)) ||
 			(info->oitem->flags_extended & GIT_INDEX_ENTRY_SKIP_WORKTREE) != 0)
 		delta_type = GIT_DELTA_UNMODIFIED;
