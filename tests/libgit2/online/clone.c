@@ -21,6 +21,7 @@ static git_clone_options g_options;
 static char *_remote_url = NULL;
 static char *_remote_user = NULL;
 static char *_remote_pass = NULL;
+static char *_remote_branch = NULL;
 static char *_remote_sslnoverify = NULL;
 static char *_remote_ssh_pubkey = NULL;
 static char *_remote_ssh_privkey = NULL;
@@ -69,6 +70,7 @@ void test_online_clone__initialize(void)
 	_remote_url = cl_getenv("GITTEST_REMOTE_URL");
 	_remote_user = cl_getenv("GITTEST_REMOTE_USER");
 	_remote_pass = cl_getenv("GITTEST_REMOTE_PASS");
+	_remote_branch = cl_getenv("GITTEST_REMOTE_BRANCH");
 	_remote_sslnoverify = cl_getenv("GITTEST_REMOTE_SSL_NOVERIFY");
 	_remote_ssh_pubkey = cl_getenv("GITTEST_REMOTE_SSH_PUBKEY");
 	_remote_ssh_privkey = cl_getenv("GITTEST_REMOTE_SSH_KEY");
@@ -102,6 +104,7 @@ void test_online_clone__cleanup(void)
 	git__free(_remote_url);
 	git__free(_remote_user);
 	git__free(_remote_pass);
+	git__free(_remote_branch);
 	git__free(_remote_sslnoverify);
 	git__free(_remote_ssh_pubkey);
 	git__free(_remote_ssh_privkey);
@@ -305,6 +308,16 @@ void test_online_clone__custom_headers(void)
 	cl_git_fail(git_clone(&g_repo, LIVE_REPO_URL, "./foo", &g_options));
 
 	/* Finally, we got it right! */
+	g_options.fetch_opts.custom_headers.strings = &ok;
+	cl_git_pass(git_clone(&g_repo, LIVE_REPO_URL, "./foo", &g_options));
+}
+
+void test_online_clone__long_custom_header(void)
+{
+	/* Long custom header with 1500 characters */
+	char *ok = "X-Custom: a0MsqH2bXV9lILn7zkAHqKpGrOVvkik7SfoyqfXbFTxccsymN5SG9hEB0RLD9koTXKWtaI1vI9jHf5ViwLHq6xvkveFX9GiqaIhe3TRu5KDZrOBgeufdBYsTTONALPlpni9XVq71bR6x3AlVEqHdXi9qiq0TRuNiujMy0ZKs8LQkQVSE8kxWZXqLsO2IJtAPw5aqsUEenK5ec12GOeOTOYlSChGllzvl2Ow4SKlVg3t8NHVWvc8HyPGmBQ79l3qUMU30P0hnUXaIrhIzGgleYWnwhGFLpryxsQfCdwkdBMuvtLH0DnkhLoAkCmnCZItEExtHBOCirEzztoFMX3lH4lM4wMqePCU8II0qloNvzPgt6cBThQJP66FYUDSCwsSb63bcTWdVx7TCa6mAplkP49PKi5pFSvFKKbs5se5MPcBVG03GiatKszIQkii0vp6OV5b54Aym4N8hQJHFMhIChKiQM91tB7PQu9vPJE6h2bzAnQsn34bBPFZHT7pBplqkASiHDjw69YV6k3M8ffTOTr2ibQnTKxh1NH3ZRx6u0KxRty9i4YLMniZUZAfFgqbSW2xXk49e8J9VNFm7j2bgHp3t813wUzqnQL4NEc0CQlF0e6pId5ADXikoH6S7aMfuYUYi1Kn1i9m7UGtaB0U7dVC65uH9vIWKnyAcmBt0mN1aikRnjz7oBKjD65SRZrKWXeCDJkpgWlXnD5JjekDCyB9m3yGkaxy1FflI1kaa4kcVbPRfs6XebHRDl9golPBUyazRG1V1iOi1mKki9ClUNO8wviNfKm5eMbWW6hU8wMXh388EotRA73TUdL4JIfNpkC4XBFLNFbFtltzO34kxXBKvhj8t0XVZOp4AWpHEL3pUtuyKhNWaWlDF6ZhjCeO8vT1akKoYaA7t6nFyqawq5nPoB0iXEHQ7YugfYfgjzpNGLgvPJ6aLg9YIKZBqfi7J9xWb356IJvTQFswi7qm6Mu7IVXarS9m84b5IfT6UCVq84u4VcdBlDswNPTw6SbBtzg9vrLLs3MoTCzJY6fHPqnKt6YthgQwOOB1ig7GTSDiX3W3SMeaz5jTASociHrUS3HrwVSgjrODnF86962cv4s3DGYjiX2cIuNfq9mZVJlNsylZjFYFV9LzOjNLlSHZVJrrGQJLjmyOCwOMkG9u2xKdSvfjxTJzqhjhTvQSQZWhKt44hA9EidUqPqjc3MhfnZ6aeAIP232gtRHoRc7FdjRSan4Q3PWy02YiRodvKAafonwCOtMcm4MASrXBiBE1tibHLSTtK4UrodFNVhymtBCRnJdVRSgrCQcr2B5Jzs4Iv6uJlJqwwyuq6In54zcmecgJZezta84B3eFoSGJhCbI6Zza0khulccglCcppciWDStAHFhncePsCQL4tup0Z8fS01RksRQ7X1xgskVvQAKELThDqbJB4FJZwrwPXOpCweAoSONntp7Ly0lAUabw75gK5sR387IxNVdISmfP";
+
+	g_options.fetch_opts.custom_headers.count = 1;
 	g_options.fetch_opts.custom_headers.strings = &ok;
 	cl_git_pass(git_clone(&g_repo, LIVE_REPO_URL, "./foo", &g_options));
 }
@@ -1005,4 +1018,43 @@ void test_online_clone__redirect_initial_fails_for_subsequent(void)
 	options.fetch_opts.follow_redirects = GIT_REMOTE_REDIRECT_INITIAL;
 
 	cl_git_fail(git_clone(&g_repo, _remote_redirect_subsequent, "./fail", &options));
+}
+
+void test_online_clone__namespace_bare(void)
+{
+	git_clone_options options = GIT_CLONE_OPTIONS_INIT;
+	git_reference *head;
+
+	if (!_remote_url)
+		cl_skip();
+
+	options.bare = true;
+
+	cl_git_pass(git_clone(&g_repo, _remote_url, "./namespaced.git", &options));
+
+	cl_git_pass(git_reference_lookup(&head, g_repo, GIT_HEAD_FILE));
+	cl_assert_equal_i(GIT_REFERENCE_SYMBOLIC, git_reference_type(head));
+	cl_assert_equal_s("refs/heads/master", git_reference_symbolic_target(head));
+
+	git_reference_free(head);
+}
+
+void test_online_clone__namespace_with_specified_branch(void)
+{
+	git_clone_options options = GIT_CLONE_OPTIONS_INIT;
+	git_reference *head;
+
+	if (!_remote_url || !_remote_branch)
+		cl_skip();
+
+	options.checkout_branch = _remote_branch;
+
+	cl_git_pass(git_clone(&g_repo, _remote_url, "./namespaced", &options));
+
+	cl_git_pass(git_reference_lookup(&head, g_repo, GIT_HEAD_FILE));
+	cl_assert_equal_i(GIT_REFERENCE_SYMBOLIC, git_reference_type(head));
+	cl_assert_equal_strn("refs/heads/", git_reference_symbolic_target(head), 11);
+	cl_assert_equal_s(_remote_branch, git_reference_symbolic_target(head) + 11);
+
+	git_reference_free(head);
 }

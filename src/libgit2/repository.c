@@ -501,7 +501,9 @@ static int validate_ownership_cb(const git_config_entry *entry, void *payload)
 	if (strcmp(entry->value, "") == 0)
 		*data->is_safe = false;
 
-	if (git_fs_path_prettify_dir(&data->tmp, entry->value, NULL) == 0 &&
+	if (strcmp(entry->value, "*") == 0)
+		*data->is_safe = true;
+	else if (git_fs_path_prettify_dir(&data->tmp, entry->value, NULL) == 0 &&
 	    strcmp(data->tmp.ptr, data->repo_path) == 0)
 		*data->is_safe = true;
 
@@ -523,6 +525,9 @@ static int validate_ownership_config(bool *is_safe, const char *path)
 		"safe.directory", NULL,
 		validate_ownership_cb,
 		&ownership_data);
+
+	if (error == GIT_ENOTFOUND)
+		error = 0;
 
 	git_config_free(config);
 	git_str_dispose(&ownership_data.tmp);

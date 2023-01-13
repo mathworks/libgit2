@@ -22,13 +22,33 @@ CONTINUE_ON_FAILURE=0
 cleanup() {
 	echo "Cleaning up..."
 
-	if [ ! -z "$GITDAEMON_PID" ]; then
-		echo "Stopping git daemon..."
-		kill $GITDAEMON_PID
+	if [ ! -z "$GIT_STANDARD_PID" ]; then
+		echo "Stopping git daemon (standard)..."
+		kill $GIT_STANDARD_PID
+	fi
+
+	if [ ! -z "$GIT_NAMESPACE_PID" ]; then
+		echo "Stopping git daemon (namespace)..."
+		kill $GIT_NAMESPACE_PID
+	fi
+
+	if [ ! -z "$PROXY_BASIC_PID" ]; then
+		echo "Stopping proxy (Basic)..."
+		kill $PROXY_BASIC_PID
+	fi
+
+	if [ ! -z "$PROXY_NTLM_PID" ]; then
+		echo "Stopping proxy (NTLM)..."
+		kill $PROXY_NTLM_PID
+	fi
+
+	if [ ! -z "$HTTP_PID" ]; then
+		echo "Stopping HTTP server..."
+		kill $HTTP_PID
 	fi
 
 	if [ ! -z "$SSHD_DIR" -a -f "${SSHD_DIR}/pid" ]; then
-		echo "Stopping SSH..."
+		echo "Stopping SSH server..."
 		kill $(cat "${SSHD_DIR}/pid")
 	fi
 
@@ -80,40 +100,46 @@ echo "##########################################################################
 echo "## Configuring test environment"
 echo "##############################################################################"
 
+echo ""
+
 if [ -z "$SKIP_GITDAEMON_TESTS" ]; then
-	echo "Starting git daemon..."
-	GITDAEMON_DIR=`mktemp -d ${TMPDIR}/gitdaemon.XXXXXXXX`
-	git init --bare "${GITDAEMON_DIR}/test.git" >/dev/null
-	git daemon --listen=localhost --export-all --enable=receive-pack --base-path="${GITDAEMON_DIR}" "${GITDAEMON_DIR}" 2>/dev/null &
-	GITDAEMON_PID=$!
-	disown $GITDAEMON_PID
+	echo "Starting git daemon (standard)..."
+	GIT_STANDARD_DIR=`mktemp -d ${TMPDIR}/git_standard.XXXXXXXX`
+	git init --bare "${GIT_STANDARD_DIR}/test.git" >/dev/null
+	git daemon --listen=localhost --export-all --enable=receive-pack --base-path="${GIT_STANDARD_DIR}" "${GIT_STANDARD_DIR}" 2>/dev/null &
+	GIT_STANDARD_PID=$!
+
+	echo "Starting git daemon (namespace)..."
+	GIT_NAMESPACE_DIR=`mktemp -d ${TMPDIR}/git_namespace.XXXXXXXX`
+	cp -R "${SOURCE_DIR}/tests/resources/namespace.git" "${GIT_NAMESPACE_DIR}/namespace.git"
+	GIT_NAMESPACE="name1" git daemon --listen=localhost --port=9419 --export-all --enable=receive-pack --base-path="${GIT_NAMESPACE_DIR}" "${GIT_NAMESPACE_DIR}" &
+	GIT_NAMESPACE_PID=$!
 fi
 
 if [ -z "$SKIP_PROXY_TESTS" ]; then
 	curl --location --silent --show-error https://github.com/ethomson/poxyproxy/releases/download/v0.7.0/poxyproxy-0.7.0.jar >poxyproxy.jar
 
-	echo ""
 	echo "Starting HTTP proxy (Basic)..."
 	java -jar poxyproxy.jar --address 127.0.0.1 --port 8080 --credentials foo:bar --auth-type basic --quiet &
+	PROXY_BASIC_PID=$!
 
-	echo ""
 	echo "Starting HTTP proxy (NTLM)..."
 	java -jar poxyproxy.jar --address 127.0.0.1 --port 8090 --credentials foo:bar --auth-type ntlm --quiet &
+	PROXY_NTLM_PID=$!
 fi
 
 if [ -z "$SKIP_NTLM_TESTS" -o -z "$SKIP_ONLINE_TESTS" ]; then
 	curl --location --silent --show-error https://github.com/ethomson/poxygit/releases/download/v0.5.1/poxygit-0.5.1.jar >poxygit.jar
 
-	echo ""
 	echo "Starting HTTP server..."
-	NTLM_DIR=`mktemp -d ${TMPDIR}/ntlm.XXXXXXXX`
-	git init --bare "${NTLM_DIR}/test.git"
-	java -jar poxygit.jar --address 127.0.0.1 --port 9000 --credentials foo:baz --quiet "${NTLM_DIR}" &
+	HTTP_DIR=`mktemp -d ${TMPDIR}/http.XXXXXXXX`
+	git init --bare "${HTTP_DIR}/test.git"
+	java -jar poxygit.jar --address 127.0.0.1 --port 9000 --credentials foo:baz --quiet "${HTTP_DIR}" &
+	HTTP_PID=$!
 fi
 
 if [ -z "$SKIP_SSH_TESTS" ]; then
-	echo ""
-	echo "Starting ssh daemon..."
+	echo "Starting SSH server..."
 	HOME=`mktemp -d ${TMPDIR}/home.XXXXXXXX`
 	SSHD_DIR=`mktemp -d ${TMPDIR}/sshd.XXXXXXXX`
 	git init --bare "${SSHD_DIR}/test.git" >/dev/null
@@ -214,12 +240,22 @@ fi
 
 if [ -z "$SKIP_GITDAEMON_TESTS" ]; then
 	echo ""
-	echo "Running gitdaemon tests"
+	echo "Running gitdaemon (standard) tests"
 	echo ""
 
 	export GITTEST_REMOTE_URL="git://localhost/test.git"
 	run_test gitdaemon
 	unset GITTEST_REMOTE_URL
+
+	echo ""
+	echo "Running gitdaemon (namespace) tests"
+	echo ""
+
+	export GITTEST_REMOTE_URL="git://localhost:9419/namespace.git"
+	export GITTEST_REMOTE_BRANCH="four"
+	run_test gitdaemon_namespace
+	unset GITTEST_REMOTE_URL
+	unset GITTEST_REMOTE_BRANCH
 fi
 
 if [ -z "$SKIP_PROXY_TESTS" ]; then
