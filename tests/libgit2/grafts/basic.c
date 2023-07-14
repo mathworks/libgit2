@@ -7,13 +7,11 @@ static git_repository *g_repo;
 
 void test_grafts_basic__initialize(void)
 {
-	git_libgit2_opts(GIT_OPT_ENABLE_SHALLOW, 1);
 	g_repo = cl_git_sandbox_init("grafted.git");
 }
 
 void test_grafts_basic__cleanup(void)
 {
-	git_libgit2_opts(GIT_OPT_ENABLE_SHALLOW, 0);
 	cl_git_sandbox_cleanup();
 }
 
@@ -24,13 +22,13 @@ void test_grafts_basic__graft_add(void)
 	git_commit_graft *graft;
 	git_grafts *grafts;
 
-	cl_git_pass(git_grafts_new(&grafts));
+	cl_git_pass(git_grafts_new(&grafts, GIT_OID_SHA1));
 
 	cl_assert(oid1 = git_array_alloc(parents));
-	cl_git_pass(git_oid_fromstr(&oid_src, "2f3053cbff8a4ca2f0666de364ddb734a28a31a9"));
+	cl_git_pass(git_oid__fromstr(&oid_src, "2f3053cbff8a4ca2f0666de364ddb734a28a31a9", GIT_OID_SHA1));
 	git_oid_cpy(oid1, &oid_src);
 
-	git_oid_fromstr(&oid_src, "f503807ffa920e407a600cfaee96b7152259acc7");
+	git_oid__fromstr(&oid_src, "f503807ffa920e407a600cfaee96b7152259acc7", GIT_OID_SHA1);
 	cl_git_pass(git_grafts_add(grafts, &oid_src, parents));
 	git_array_clear(parents);
 
@@ -75,17 +73,17 @@ void test_grafts_basic__grafted_objects(void)
 	git_oid oid;
 	git_commit *commit;
 
-	cl_git_pass(git_oid_fromstr(&oid, "f503807ffa920e407a600cfaee96b7152259acc7"));
+	cl_git_pass(git_oid__fromstr(&oid, "f503807ffa920e407a600cfaee96b7152259acc7", GIT_OID_SHA1));
 	cl_git_pass(git_commit_lookup(&commit, g_repo, &oid));
 	cl_assert_equal_i(1, git_commit_parentcount(commit));
 	git_commit_free(commit);
 
-	cl_git_pass(git_oid_fromstr(&oid, "0512adebd3782157f0d5c9b22b043f87b4aaff9e"));
+	cl_git_pass(git_oid__fromstr(&oid, "0512adebd3782157f0d5c9b22b043f87b4aaff9e", GIT_OID_SHA1));
 	cl_git_pass(git_commit_lookup(&commit, g_repo, &oid));
 	cl_assert_equal_i(1, git_commit_parentcount(commit));
 	git_commit_free(commit);
 
-	cl_git_pass(git_oid_fromstr(&oid, "66cc22a015f6ca75b34c82d28f78ba663876bade"));
+	cl_git_pass(git_oid__fromstr(&oid, "66cc22a015f6ca75b34c82d28f78ba663876bade", GIT_OID_SHA1));
 	cl_git_pass(git_commit_lookup(&commit, g_repo, &oid));
 	cl_assert_equal_i(4, git_commit_parentcount(commit));
 	git_commit_free(commit);

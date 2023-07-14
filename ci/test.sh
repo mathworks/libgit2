@@ -13,8 +13,13 @@ fi
 
 SOURCE_DIR=${SOURCE_DIR:-$( cd "$( dirname "${BASH_SOURCE[0]}" )" && dirname $( pwd ) )}
 BUILD_DIR=$(pwd)
+BUILD_PATH=${BUILD_PATH:=$PATH}
+CTEST=$(which ctest)
 TMPDIR=${TMPDIR:-/tmp}
 USER=${USER:-$(whoami)}
+
+HOME=`mktemp -d ${TMPDIR}/home.XXXXXXXX`
+export CLAR_HOMEDIR=${HOME}
 
 SUCCESS=1
 CONTINUE_ON_FAILURE=0
@@ -30,6 +35,11 @@ cleanup() {
 	if [ ! -z "$GIT_NAMESPACE_PID" ]; then
 		echo "Stopping git daemon (namespace)..."
 		kill $GIT_NAMESPACE_PID
+	fi
+
+	if [ ! -z "$GIT_SHA256_PID" ]; then
+		echo "Stopping git daemon (sha256)..."
+		kill $GIT_SHA256_PID
 	fi
 
 	if [ ! -z "$PROXY_BASIC_PID" ]; then
@@ -72,7 +82,11 @@ run_test() {
 
 		RETURN_CODE=0
 
-		CLAR_SUMMARY="${BUILD_DIR}/results_${1}.xml" ctest -V -R "^${1}$" || RETURN_CODE=$? && true
+		(
+			export PATH="${BUILD_PATH}"
+			export CLAR_SUMMARY="${BUILD_DIR}/results_${1}.xml"
+			"${CTEST}" -V -R "^${1}$"
+		) || RETURN_CODE=$? && true
 
 		if [ "$RETURN_CODE" -eq 0 ]; then
 			FAILED=0
@@ -93,8 +107,30 @@ run_test() {
 	fi
 }
 
+indent() { sed "s/^/    /"; }
+
+cygfullpath() {
+	result=$(echo "${1}" | tr \; \\n | while read -r element; do
+		if [ "${last}" != "" ]; then echo -n ":"; fi
+		echo -n $(cygpath "${element}")
+		last="${element}"
+	done)
+	if [ "${result}" = "" ]; then exit 1; fi
+	echo "${result}"
+}
+
+if [[ "$(uname -s)" == MINGW* ]]; then
+        BUILD_PATH=$(cygfullpath "$BUILD_PATH")
+fi
+
+
 # Configure the test environment; run them early so that we're certain
 # that they're started by the time we need them.
+
+echo "CTest version:"
+env PATH="${BUILD_PATH}" "${CTEST}" --version | head -1 2>&1 | indent
+
+echo ""
 
 echo "##############################################################################"
 echo "## Configuring test environment"
@@ -114,6 +150,12 @@ if [ -z "$SKIP_GITDAEMON_TESTS" ]; then
 	cp -R "${SOURCE_DIR}/tests/resources/namespace.git" "${GIT_NAMESPACE_DIR}/namespace.git"
 	GIT_NAMESPACE="name1" git daemon --listen=localhost --port=9419 --export-all --enable=receive-pack --base-path="${GIT_NAMESPACE_DIR}" "${GIT_NAMESPACE_DIR}" &
 	GIT_NAMESPACE_PID=$!
+
+	echo "Starting git daemon (sha256)..."
+	GIT_SHA256_DIR=`mktemp -d ${TMPDIR}/git_sha256.XXXXXXXX`
+	cp -R "${SOURCE_DIR}/tests/resources/testrepo_256.git" "${GIT_SHA256_DIR}/testrepo_256.git"
+	git daemon --listen=localhost --port=9420 --export-all --enable=receive-pack --base-path="${GIT_SHA256_DIR}" "${GIT_SHA256_DIR}" &
+	GIT_SHA256_PID=$!
 fi
 
 if [ -z "$SKIP_PROXY_TESTS" ]; then
@@ -129,7 +171,7 @@ if [ -z "$SKIP_PROXY_TESTS" ]; then
 fi
 
 if [ -z "$SKIP_NTLM_TESTS" -o -z "$SKIP_ONLINE_TESTS" ]; then
-	curl --location --silent --show-error https://github.com/ethomson/poxygit/releases/download/v0.5.1/poxygit-0.5.1.jar >poxygit.jar
+	curl --location --silent --show-error https://github.com/ethomson/poxygit/releases/download/v0.6.0/poxygit-0.6.0.jar >poxygit.jar
 
 	echo "Starting HTTP server..."
 	HTTP_DIR=`mktemp -d ${TMPDIR}/http.XXXXXXXX`
@@ -140,7 +182,6 @@ fi
 
 if [ -z "$SKIP_SSH_TESTS" ]; then
 	echo "Starting SSH server..."
-	HOME=`mktemp -d ${TMPDIR}/home.XXXXXXXX`
 	SSHD_DIR=`mktemp -d ${TMPDIR}/sshd.XXXXXXXX`
 	git init --bare "${SSHD_DIR}/test.git" >/dev/null
 	cat >"${SSHD_DIR}/sshd_config" <<-EOF
@@ -169,6 +210,11 @@ if [ -z "$SKIP_SSH_TESTS" ]; then
 	while read algorithm key comment; do
 		echo "[localhost]:2222 $algorithm $key" >>"${HOME}/.ssh/known_hosts"
 	done <"${SSHD_DIR}/id_rsa.pub"
+
+	# Append the github.com keys for the tests that don't override checks.
+	# We ask for ssh-rsa to test that the selection based off of known_hosts
+	# is working.
+	ssh-keyscan -t ssh-rsa github.com >>"${HOME}/.ssh/known_hosts"
 
 	# Get the fingerprint for localhost and remove the colons so we can
 	# parse it as a hex number. Older versions have a different output
@@ -225,9 +271,13 @@ if [ -z "$SKIP_ONLINE_TESTS" ]; then
 
 	export GITTEST_REMOTE_REDIRECT_INITIAL="http://localhost:9000/initial-redirect/libgit2/TestGitRepository"
 	export GITTEST_REMOTE_REDIRECT_SUBSEQUENT="http://localhost:9000/subsequent-redirect/libgit2/TestGitRepository"
+	export GITTEST_REMOTE_SPEED_SLOW="http://localhost:9000/speed-9600/test.git"
+	export GITTEST_REMOTE_SPEED_TIMESOUT="http://localhost:9000/speed-0.5/test.git"
 	run_test online
 	unset GITTEST_REMOTE_REDIRECT_INITIAL
 	unset GITTEST_REMOTE_REDIRECT_SUBSEQUENT
+	unset GITTEST_REMOTE_SPEED_SLOW
+	unset GITTEST_REMOTE_SPEED_TIMESOUT
 
 	# Run the online tests that immutably change global state separately
 	# to avoid polluting the test environment.
@@ -256,6 +306,14 @@ if [ -z "$SKIP_GITDAEMON_TESTS" ]; then
 	run_test gitdaemon_namespace
 	unset GITTEST_REMOTE_URL
 	unset GITTEST_REMOTE_BRANCH
+
+	echo ""
+	echo "Running gitdaemon (sha256) tests"
+	echo ""
+
+	export GITTEST_REMOTE_URL="git://localhost:9420/testrepo_256.git"
+	run_test gitdaemon_sha256
+	unset GITTEST_REMOTE_URL
 fi
 
 if [ -z "$SKIP_PROXY_TESTS" ]; then
@@ -379,7 +437,7 @@ if [ -z "$SKIP_FUZZERS" ]; then
 	echo "## Running fuzzers"
 	echo "##############################################################################"
 
-	ctest -V -R 'fuzzer'
+	env PATH="${BUILD_PATH}" "${CTEST}" -V -R 'fuzzer'
 fi
 
 cleanup

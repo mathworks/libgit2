@@ -8,23 +8,27 @@
 #include "grafts.h"
 
 #include "futils.h"
+#include "oid.h"
 #include "oidarray.h"
 #include "parse.h"
-
-bool git_shallow__enabled = false;
 
 struct git_grafts {
 	/* Map of `git_commit_graft`s */
 	git_oidmap *commits;
 
+	/* Type of object IDs */
+	git_oid_t oid_type;
+
 	/* File backing the graft. NULL if it's an in-memory graft */
 	char *path;
-	git_oid path_checksum;
+	unsigned char path_checksum[GIT_HASH_SHA256_SIZE];
 };
 
-int git_grafts_new(git_grafts **out)
+int git_grafts_new(git_grafts **out, git_oid_t oid_type)
 {
 	git_grafts *grafts;
+
+	GIT_ASSERT_ARG(out && oid_type);
 
 	grafts = git__calloc(1, sizeof(*grafts));
 	GIT_ERROR_CHECK_ALLOC(grafts);
@@ -34,19 +38,23 @@ int git_grafts_new(git_grafts **out)
 		return -1;
 	}
 
+	grafts->oid_type = oid_type;
+
 	*out = grafts;
 	return 0;
 }
 
-int git_grafts_from_file(git_grafts **out, const char *path)
+int git_grafts_open(
+	git_grafts **out,
+	const char *path,
+	git_oid_t oid_type)
 {
 	git_grafts *grafts = NULL;
 	int error;
 
-	if (*out)
-		return git_grafts_refresh(*out);
+	GIT_ASSERT_ARG(out && path && oid_type);
 
-	if ((error = git_grafts_new(&grafts)) < 0)
+	if ((error = git_grafts_new(&grafts, oid_type)) < 0)
 		goto error;
 
 	grafts->path = git__strdup(path);
@@ -56,10 +64,22 @@ int git_grafts_from_file(git_grafts **out, const char *path)
 		goto error;
 
 	*out = grafts;
+
 error:
 	if (error < 0)
 		git_grafts_free(grafts);
+
 	return error;
+}
+
+int git_grafts_open_or_refresh(
+	git_grafts **out,
+	const char *path,
+	git_oid_t oid_type)
+{
+	GIT_ASSERT_ARG(out && path && oid_type);
+
+	return *out ? git_grafts_refresh(*out) : git_grafts_open(out, path, oid_type);
 }
 
 void git_grafts_free(git_grafts *grafts)
@@ -76,7 +96,8 @@ void git_grafts_clear(git_grafts *grafts)
 {
 	git_commit_graft *graft;
 
-	assert(grafts);
+	if (!grafts)
+		return;
 
 	git_oidmap_foreach_value(grafts->commits, graft, {
 		git__free(graft->parents.ptr);
@@ -91,18 +112,19 @@ int git_grafts_refresh(git_grafts *grafts)
 	git_str contents = GIT_STR_INIT;
 	int error, updated = 0;
 
-	assert(grafts);
+	GIT_ASSERT_ARG(grafts);
 
 	if (!grafts->path)
 		return 0;
 
-	if ((error = git_futils_readbuffer_updated(&contents, grafts->path, 
-				(grafts->path_checksum).id, &updated)) < 0) {
+	if ((error = git_futils_readbuffer_updated(&contents, grafts->path,
+				grafts->path_checksum, &updated)) < 0) {
+
 		if (error == GIT_ENOTFOUND) {
 			git_grafts_clear(grafts);
 			error = 0;
 		}
-		
+
 		goto cleanup;
 	}
 
@@ -118,7 +140,7 @@ cleanup:
 	return error;
 }
 
-int git_grafts_parse(git_grafts *grafts, const char *content, size_t contentlen)
+int git_grafts_parse(git_grafts *grafts, const char *buf, size_t len)
 {
 	git_array_oid_t parents = GIT_ARRAY_INIT;
 	git_parse_ctx parser;
@@ -126,29 +148,26 @@ int git_grafts_parse(git_grafts *grafts, const char *content, size_t contentlen)
 
 	git_grafts_clear(grafts);
 
-	if ((error = git_parse_ctx_init(&parser, content, contentlen)) < 0)
+	if ((error = git_parse_ctx_init(&parser, buf, len)) < 0)
 		goto error;
 
 	for (; parser.remain_len; git_parse_advance_line(&parser)) {
-		const char *line_start = parser.line, *line_end = parser.line + parser.line_len;
 		git_oid graft_oid;
 
-		if ((error = git_oid_fromstrn(&graft_oid, line_start, GIT_OID_HEXSZ)) < 0) {
+		if ((error = git_parse_advance_oid(&graft_oid, &parser, grafts->oid_type)) < 0) {
 			git_error_set(GIT_ERROR_GRAFTS, "invalid graft OID at line %" PRIuZ, parser.line_num);
 			goto error;
 		}
-		line_start += GIT_OID_HEXSZ;
 
-		while (line_start < line_end && *line_start == ' ') {
+		while (parser.line_len && git_parse_advance_expected(&parser, "\n", 1) != 0) {
 			git_oid *id = git_array_alloc(parents);
 			GIT_ERROR_CHECK_ALLOC(id);
 
-			if ((error = git_oid_fromstrn(id, ++line_start, GIT_OID_HEXSZ)) < 0) {
+			if ((error = git_parse_advance_expected(&parser, " ", 1)) < 0 ||
+			    (error = git_parse_advance_oid(id, &parser, grafts->oid_type)) < 0) {
 				git_error_set(GIT_ERROR_GRAFTS, "invalid parent OID at line %" PRIuZ, parser.line_num);
 				goto error;
 			}
-
-			line_start += GIT_OID_HEXSZ;
 		}
 
 		if ((error = git_grafts_add(grafts, &graft_oid, parents)) < 0)
@@ -169,7 +188,7 @@ int git_grafts_add(git_grafts *grafts, const git_oid *oid, git_array_oid_t paren
 	int error;
 	size_t i;
 
-	assert(grafts && oid);
+	GIT_ASSERT_ARG(grafts && oid);
 
 	graft = git__calloc(1, sizeof(*graft));
 	GIT_ERROR_CHECK_ALLOC(graft);
@@ -185,6 +204,7 @@ int git_grafts_add(git_grafts *grafts, const git_oid *oid, git_array_oid_t paren
 
 	if ((error = git_grafts_remove(grafts, &graft->oid)) < 0 && error != GIT_ENOTFOUND)
 		goto cleanup;
+
 	if ((error = git_oidmap_set(grafts->commits, &graft->oid, graft)) < 0)
 		goto cleanup;
 
@@ -201,7 +221,7 @@ int git_grafts_remove(git_grafts *grafts, const git_oid *oid)
 	git_commit_graft *graft;
 	int error;
 
-	assert(grafts && oid);
+	GIT_ASSERT_ARG(grafts && oid);
 
 	if ((graft = git_oidmap_get(grafts->commits, oid)) == NULL)
 		return GIT_ENOTFOUND;
@@ -217,25 +237,31 @@ int git_grafts_remove(git_grafts *grafts, const git_oid *oid)
 
 int git_grafts_get(git_commit_graft **out, git_grafts *grafts, const git_oid *oid)
 {
-	assert(out && grafts && oid);
+	GIT_ASSERT_ARG(out && grafts && oid);
 	if ((*out = git_oidmap_get(grafts->commits, oid)) == NULL)
 		return GIT_ENOTFOUND;
 	return 0;
 }
 
-int git_grafts_get_oids(git_array_oid_t *out, git_grafts *grafts)
+int git_grafts_oids(git_oid **out, size_t *out_len, git_grafts *grafts)
 {
+	git_array_oid_t array = GIT_ARRAY_INIT;
 	const git_oid *oid;
-	size_t i = 0;
-	int error;
+	size_t existing, i = 0;
 
-	assert(out && grafts);
+	GIT_ASSERT_ARG(out && grafts);
 
-	while ((error = git_oidmap_iterate(NULL, grafts->commits, &i, &oid)) == 0) {
-		git_oid *cpy = git_array_alloc(*out);
+	if ((existing = git_oidmap_size(grafts->commits)) > 0)
+		git_array_init_to_size(array, existing);
+
+	while (git_oidmap_iterate(NULL, grafts->commits, &i, &oid) == 0) {
+		git_oid *cpy = git_array_alloc(array);
 		GIT_ERROR_CHECK_ALLOC(cpy);
 		git_oid_cpy(cpy, oid);
 	}
+
+	*out = array.ptr;
+	*out_len = array.size;
 
 	return 0;
 }

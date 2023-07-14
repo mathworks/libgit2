@@ -25,21 +25,11 @@
 
 GIT_BEGIN_DECL
 
-/**
- * Flags to pass to transport
- *
- * Currently unused.
- */
-typedef enum {
-	GIT_TRANSPORTFLAGS_NONE = 0,
-} git_transport_flags_t;
-
-typedef struct git_shallowarray git_shallowarray;
-
 typedef struct {
 	const git_remote_head * const *refs;
-	size_t count;
-	git_shallowarray *shallow_roots;
+	size_t refs_len;
+	git_oid *shallow_roots;
+	size_t shallow_roots_len;
 	int depth;
 } git_fetch_negotiation;
 
@@ -75,6 +65,18 @@ struct git_transport {
 		unsigned int *capabilities,
 		git_transport *transport);
 
+#ifdef GIT_EXPERIMENTAL_SHA256
+	/**
+	 * Gets the object type for the remote repository.
+	 *
+	 * This function may be called after a successful call to
+	 * `connect()`.
+	 */
+	int GIT_CALLBACK(oid_type)(
+		git_oid_t *object_type,
+		git_transport *transport);
+#endif
+
 	/**
 	 * Get the list of available references in the remote repository.
 	 *
@@ -103,6 +105,16 @@ struct git_transport {
 		git_transport *transport,
 		git_repository *repo,
 		const git_fetch_negotiation *fetch_data);
+
+	/**
+	 * Return the shallow roots of the remote.
+	 *
+	 * This function may be called after a successful call to
+	 * `negotiate_fetch`.
+	 */
+	int GIT_CALLBACK(shallow_roots)(
+		git_oidarray *out,
+		git_transport *transport);
 
 	/**
 	 * Start downloading the packfile from the remote repository.
@@ -446,11 +458,6 @@ GIT_EXTERN(int) git_smart_subtransport_ssh(
 	git_smart_subtransport **out,
 	git_transport *owner,
 	void *param);
-
-GIT_EXTERN(size_t) git_shallowarray_count(git_shallowarray *array);
-GIT_EXTERN(const git_oid *) git_shallowarray_get(git_shallowarray *array, size_t idx);
-GIT_EXTERN(int) git_shallowarray_add(git_shallowarray *array, git_oid *oid);
-GIT_EXTERN(int) git_shallowarray_remove(git_shallowarray *array, git_oid *oid);
 
 /** @} */
 GIT_END_DECL

@@ -17,6 +17,7 @@
 #include "fetchhead.h"
 #include "push.h"
 #include "proxy.h"
+#include "strarray.h"
 
 #include "git2/config.h"
 #include "git2/types.h"
@@ -1027,6 +1028,24 @@ int git_remote_capabilities(unsigned int *out, git_remote *remote)
 	return remote->transport->capabilities(out, remote->transport);
 }
 
+int git_remote_oid_type(git_oid_t *out, git_remote *remote)
+{
+	GIT_ASSERT_ARG(remote);
+
+	if (!remote->transport) {
+		git_error_set(GIT_ERROR_NET, "this remote has never connected");
+		*out = 0;
+		return -1;
+	}
+
+#ifdef GIT_EXPERIMENTAL_SHA256
+	return remote->transport->oid_type(out, remote->transport);
+#else
+	*out = GIT_OID_SHA1;
+	return 0;
+#endif
+}
+
 static int lookup_config(char **out, git_config *cfg, const char *name)
 {
 	git_config_entry *ce = NULL;
@@ -1226,24 +1245,6 @@ static int ls_to_vector(git_vector *out, git_remote *remote)
 	return 0;
 }
 
-#define copy_opts(out, in) \
-	if (in) { \
-		(out)->callbacks = (in)->callbacks; \
-		(out)->proxy_opts = (in)->proxy_opts; \
-		(out)->custom_headers = (in)->custom_headers; \
-		(out)->follow_redirects = (in)->follow_redirects; \
-	}
-
-GIT_INLINE(int) connect_opts_from_fetch_opts(
-	git_remote_connect_options *out,
-	git_remote *remote,
-	const git_fetch_options *fetch_opts)
-{
-	git_remote_connect_options tmp = GIT_REMOTE_CONNECT_OPTIONS_INIT;
-	copy_opts(&tmp, fetch_opts);
-	return git_remote_connect_options_normalize(out, remote->repo, &tmp);
-}
-
 static int connect_or_reset_options(
 	git_remote *remote,
 	int direction,
@@ -1331,7 +1332,8 @@ int git_remote_download(
 		return -1;
 	}
 
-	if (connect_opts_from_fetch_opts(&connect_opts, remote, opts) < 0)
+	if (git_remote_connect_options__from_fetch_opts(&connect_opts,
+			remote, opts) < 0)
 		return -1;
 
 	if ((error = connect_or_reset_options(remote, GIT_DIRECTION_FETCH, &connect_opts)) < 0)
@@ -1351,6 +1353,8 @@ int git_remote_fetch(
 	bool prune = false;
 	git_str reflog_msg_buf = GIT_STR_INIT;
 	git_remote_connect_options connect_opts = GIT_REMOTE_CONNECT_OPTIONS_INIT;
+	unsigned int capabilities;
+	git_oid_t oid_type;
 
 	GIT_ASSERT_ARG(remote);
 
@@ -1359,7 +1363,8 @@ int git_remote_fetch(
 		return -1;
 	}
 
-	if (connect_opts_from_fetch_opts(&connect_opts, remote, opts) < 0)
+	if (git_remote_connect_options__from_fetch_opts(&connect_opts,
+			remote, opts) < 0)
 		return -1;
 
 	if ((error = connect_or_reset_options(remote, GIT_DIRECTION_FETCH, &connect_opts)) < 0)
@@ -1369,6 +1374,10 @@ int git_remote_fetch(
 		update_fetchhead = opts->update_fetchhead;
 		tagopt = opts->download_tags;
 	}
+
+	if ((error = git_remote_capabilities(&capabilities, remote)) < 0 ||
+	    (error = git_remote_oid_type(&oid_type, remote)) < 0)
+		return error;
 
 	/* Connect and download everything */
 	error = git_remote__download(remote, refspecs, opts);
@@ -1623,7 +1632,10 @@ int git_remote_prune(git_remote *remote, const git_remote_callbacks *callbacks)
 	const git_refspec *spec;
 	const char *refname;
 	int error;
-	git_oid zero_id = GIT_OID_SHA1_ZERO;
+	git_oid zero_id;
+
+	GIT_ASSERT(remote && remote->repo);
+	git_oid_clear(&zero_id, remote->repo->oid_type);
 
 	if (callbacks)
 		GIT_ERROR_CHECK_VERSION(callbacks, GIT_REMOTE_CALLBACKS_VERSION, "git_remote_callbacks");
@@ -1728,6 +1740,9 @@ static int update_ref(
 	git_oid old_id;
 	int error;
 
+	GIT_ASSERT(remote && remote->repo);
+	git_oid_clear(&old_id, remote->repo->oid_type);
+
 	error = git_reference_name_to_id(&old_id, remote->repo, ref_name);
 
 	if (error < 0 && error != GIT_ENOTFOUND)
@@ -1770,6 +1785,8 @@ static int update_one_tip(
 	git_oid old;
 	int valid;
 	int error;
+
+	GIT_ASSERT(remote && remote->repo);
 
 	if ((error = git_repository_odb__weakptr(&odb, remote->repo)) < 0)
 		goto done;
@@ -1831,7 +1848,7 @@ static int update_one_tip(
 	}
 
 	if (error == GIT_ENOTFOUND) {
-		git_oid_clear(&old, GIT_OID_SHA1);
+		git_oid_clear(&old, remote->repo->oid_type);
 		error = 0;
 
 		if (autotag && (error = git_vector_insert(update_heads, head)) < 0)
@@ -1877,7 +1894,7 @@ static int update_tips_for_spec(
 	int error = 0;
 	size_t i;
 
-	GIT_ASSERT_ARG(remote);
+	GIT_ASSERT_ARG(remote && remote->repo);
 
 	if (git_refspec__parse(&tagspec, GIT_REFSPEC_TAGS, true) < 0)
 		return -1;
@@ -1893,10 +1910,10 @@ static int update_tips_for_spec(
 	}
 
 	/* Handle specified oid sources */
-	if (git_oid__is_hexstr(spec->src, GIT_OID_SHA1)) {
+	if (git_oid__is_hexstr(spec->src, remote->repo->oid_type)) {
 		git_oid id;
 
-		if ((error = git_oid__fromstr(&id, spec->src, GIT_OID_SHA1)) < 0)
+		if ((error = git_oid__fromstr(&id, spec->src, remote->repo->oid_type)) < 0)
 			goto on_error;
 
 		if (spec->dst &&
@@ -2148,11 +2165,6 @@ void git_remote_free(git_remote *remote)
 
 		remote->transport->free(remote->transport);
 		remote->transport = NULL;
-	}
-
-	if (remote->nego.shallow_roots) {
-		git_array_clear(remote->nego.shallow_roots->array);
-		git__free(remote->nego.shallow_roots);
 	}
 
 	git_vector_free(&remote->refs);
@@ -2902,16 +2914,6 @@ done:
 	return error;
 }
 
-GIT_INLINE(int) connect_opts_from_push_opts(
-	git_remote_connect_options *out,
-	git_remote *remote,
-	const git_push_options *push_opts)
-{
-	git_remote_connect_options tmp = GIT_REMOTE_CONNECT_OPTIONS_INIT;
-	copy_opts(&tmp, push_opts);
-	return git_remote_connect_options_normalize(out, remote->repo, &tmp);
-}
-
 int git_remote_upload(
 	git_remote *remote,
 	const git_strarray *refspecs,
@@ -2930,7 +2932,8 @@ int git_remote_upload(
 		return -1;
 	}
 
-	if ((error = connect_opts_from_push_opts(&connect_opts, remote, opts)) < 0)
+	if ((error = git_remote_connect_options__from_push_opts(
+			&connect_opts, remote, opts)) < 0)
 		goto cleanup;
 
 	if ((error = connect_or_reset_options(remote, GIT_DIRECTION_PUSH, &connect_opts)) < 0)
@@ -2991,7 +2994,8 @@ int git_remote_push(
 		return -1;
 	}
 
-	if (connect_opts_from_push_opts(&connect_opts, remote, opts) < 0)
+	if (git_remote_connect_options__from_push_opts(&connect_opts,
+			remote, opts) < 0)
 		return -1;
 
 	if ((error = git_remote_upload(remote, refspecs, opts)) < 0)

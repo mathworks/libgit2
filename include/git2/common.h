@@ -223,7 +223,12 @@ typedef enum {
 	GIT_OPT_SET_EXTENSIONS,
 	GIT_OPT_GET_OWNER_VALIDATION,
 	GIT_OPT_SET_OWNER_VALIDATION,
-	GIT_OPT_ENABLE_SHALLOW
+	GIT_OPT_GET_HOMEDIR,
+	GIT_OPT_SET_HOMEDIR,
+	GIT_OPT_SET_SERVER_CONNECT_TIMEOUT,
+	GIT_OPT_GET_SERVER_CONNECT_TIMEOUT,
+	GIT_OPT_SET_SERVER_TIMEOUT,
+	GIT_OPT_GET_SERVER_TIMEOUT
 } git_libgit2_opt_t;
 
 /**
@@ -460,9 +465,6 @@ typedef enum {
  *      > { "!noop", "newext" } indicates that the caller does not want
  *      > to support repositories with the `noop` extension but does want
  *      > to support repositories with the `newext` extension.
- *	
- * 	 opts(GIT_OPT_ENABLE_SHALLOW, int enabled)
- *		> Enable or disable shallow clone support completely.
  *
  *   opts(GIT_OPT_GET_OWNER_VALIDATION, int *enabled)
  *      > Gets the owner validation setting for repository
@@ -471,6 +473,37 @@ typedef enum {
  *   opts(GIT_OPT_SET_OWNER_VALIDATION, int enabled)
  *      > Set that repository directories should be owned by the current
  *      > user. The default is to validate ownership.
+ *
+ *   opts(GIT_OPT_GET_HOMEDIR, git_buf *out)
+ *      > Gets the current user's home directory, as it will be used
+ *      > for file lookups. The path is written to the `out` buffer.
+ *
+ *   opts(GIT_OPT_SET_HOMEDIR, const char *path)
+ *      > Sets the directory used as the current user's home directory,
+ *      > for file lookups.
+ *      >
+ *      > - `path` directory of home directory.
+ *
+ *   opts(GIT_OPT_GET_SERVER_CONNECT_TIMEOUT, int *timeout)
+ *      > Gets the timeout (in milliseconds) to attempt connections to
+ *      > a remote server.
+ *
+ *   opts(GIT_OPT_SET_SERVER_CONNECT_TIMEOUT, int timeout)
+ *      > Sets the timeout (in milliseconds) to attempt connections to
+ *      > a remote server. This is supported only for HTTP(S) connections
+ *      > and is not supported by SSH. Set to 0 to use the system default.
+ *      > Note that this may not be able to be configured longer than the
+ *      > system default, typically 75 seconds.
+ *
+ *   opts(GIT_OPT_GET_SERVER_TIMEOUT, int *timeout)
+ *      > Gets the timeout (in milliseconds) for reading from and writing
+ *      > to a remote server.
+ *
+ *   opts(GIT_OPT_SET_SERVER_TIMEOUT, int timeout)
+ *      > Sets the timeout (in milliseconds) for reading from and writing
+ *      > to a remote server. This is supported only for HTTP(S)
+ *      > connections and is not supported by SSH. Set to 0 to use the
+ *      > system default.
  *
  * @param option Option key
  * @param ... value to set the option

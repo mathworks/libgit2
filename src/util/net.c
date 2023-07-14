@@ -19,6 +19,50 @@
 #define DEFAULT_PORT_GIT   "9418"
 #define DEFAULT_PORT_SSH   "22"
 
+bool git_net_hostname_matches_cert(
+	const char *hostname,
+	const char *pattern)
+{
+	for (;;) {
+		char c = git__tolower(*pattern++);
+
+		if (c == '\0')
+			return *hostname ? false : true;
+
+		if (c == '*') {
+			c = *pattern;
+
+			/* '*' at the end matches everything left */
+			if (c == '\0')
+				return true;
+
+			/*
+			 * We've found a pattern, so move towards the
+			 * next matching char. The '.' is handled
+			 * specially because wildcards aren't allowed
+			 * to cross subdomains.
+			 */
+			while(*hostname) {
+				char h = git__tolower(*hostname);
+
+				if (h == c)
+					return git_net_hostname_matches_cert(hostname++, pattern);
+				else if (h == '.')
+					return git_net_hostname_matches_cert(hostname, pattern);
+
+				hostname++;
+			}
+
+			return false;
+		}
+
+		if (c != git__tolower(*hostname++))
+			return false;
+	}
+
+	return false;
+}
+
 bool git_net_str_is_url(const char *str)
 {
 	const char *c;
@@ -644,6 +688,13 @@ int git_net_url_parse_scp(git_net_url *url, const char *given)
 	GIT_ERROR_CHECK_ALLOC(url->path = git__strdup(path));
 
 	return 0;
+}
+
+int git_net_url_parse_standard_or_scp(git_net_url *url, const char *given)
+{
+	return git_net_str_is_url(given) ?
+	       git_net_url_parse(url, given) :
+	       git_net_url_parse_scp(url, given);
 }
 
 int git_net_url_joinpath(
