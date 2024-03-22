@@ -436,17 +436,17 @@ static int winhttp_stream_connect(winhttp_stream *s)
 		GIT_ERROR_CHECK_ALLOC(proxy_url);
 	}
 
-	if (proxy_url) {
+	if (proxy_url && *proxy_url) {
 		git_str processed_url = GIT_STR_INIT;
 		WINHTTP_PROXY_INFO proxy_info;
 		wchar_t *proxy_wide;
 
 		git_net_url_dispose(&t->proxy.url);
 
-		if ((error = git_net_url_parse(&t->proxy.url, proxy_url)) < 0)
+		if ((error = git_net_url_parse_http(&t->proxy.url, proxy_url)) < 0)
 			goto on_error;
 
-		if (strcmp(t->proxy.url.scheme, "http") != 0 && strcmp(t->proxy.url.scheme, "https") != 0) {
+		if (!git_net_url_valid(&t->proxy.url)) {
 			git_error_set(GIT_ERROR_HTTP, "invalid URL: '%s'", proxy_url);
 			error = -1;
 			goto on_error;
