@@ -131,7 +131,8 @@ endif()
 # realtime support
 
 check_library_exists(rt clock_gettime "time.h" NEED_LIBRT)
-if(NEED_LIBRT)
+
+if(NEED_LIBRT AND NOT CMAKE_SYSTEM_NAME MATCHES "iOS")
 	list(APPEND LIBGIT2_SYSTEM_LIBS rt)
 	list(APPEND LIBGIT2_PC_LIBS "-lrt")
 endif()
@@ -205,7 +206,7 @@ add_feature_info(iconv GIT_USE_ICONV "iconv encoding conversion support")
 add_subdirectory(libgit2)
 add_subdirectory(util)
 
-if(BUILD_CLI)
+if(BUILD_CLI AND NOT CMAKE_SYSTEM_NAME MATCHES "iOS")
 	add_subdirectory(cli)
 endif()
 
