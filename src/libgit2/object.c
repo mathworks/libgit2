@@ -33,7 +33,7 @@ typedef struct {
 } git_object_def;
 
 static git_object_def git_objects_table[] = {
-	/* 0 = GIT_OBJECT__EXT1 */
+	/* 0 = unused */
 	{ "", 0, NULL, NULL, NULL },
 
 	/* 1 = GIT_OBJECT_COMMIT */
@@ -46,14 +46,7 @@ static git_object_def git_objects_table[] = {
 	{ "blob", sizeof(git_blob), git_blob__parse, git_blob__parse_raw, git_blob__free },
 
 	/* 4 = GIT_OBJECT_TAG */
-	{ "tag", sizeof(git_tag), git_tag__parse, git_tag__parse_raw, git_tag__free },
-
-	/* 5 = GIT_OBJECT__EXT2 */
-	{ "", 0, NULL, NULL, NULL },
-	/* 6 = GIT_OBJECT_OFS_DELTA */
-	{ "OFS_DELTA", 0, NULL, NULL, NULL },
-	/* 7 = GIT_OBJECT_REF_DELTA */
-	{ "REF_DELTA", 0, NULL, NULL, NULL },
+	{ "tag", sizeof(git_tag), git_tag__parse, git_tag__parse_raw, git_tag__free }
 };
 
 int git_object__from_raw(
@@ -342,13 +335,20 @@ git_object_t git_object_stringn2type(const char *str, size_t len)
 	return GIT_OBJECT_INVALID;
 }
 
-int git_object_typeisloose(git_object_t type)
+int git_object_type_is_valid(git_object_t type)
 {
 	if (type < 0 || ((size_t) type) >= ARRAY_SIZE(git_objects_table))
 		return 0;
 
 	return (git_objects_table[type].size > 0) ? 1 : 0;
 }
+
+#ifndef GIT_DEPRECATE_HARD
+int git_object_typeisloose(git_object_t type)
+{
+	return git_object_type_is_valid(type);
+}
+#endif
 
 size_t git_object__size(git_object_t type)
 {
@@ -526,7 +526,7 @@ static int git_object__short_id(git_str *out, const git_object *obj)
 	git_oid id;
 	git_odb *odb;
 	size_t oid_hexsize;
-	int len = GIT_ABBREV_DEFAULT, error;
+	int len, error;
 
 	GIT_ASSERT_ARG(out);
 	GIT_ASSERT_ARG(obj);
@@ -536,12 +536,13 @@ static int git_object__short_id(git_str *out, const git_object *obj)
 	git_oid_clear(&id, repo->oid_type);
 	oid_hexsize = git_oid_hexsize(repo->oid_type);
 
-	if ((error = git_repository__configmap_lookup(&len, repo, GIT_CONFIGMAP_ABBREV)) < 0)
+	if ((error = git_repository__abbrev_length(&len, repo)) < 0)
 		return error;
 
-	if (len < 0 || (size_t)len > oid_hexsize) {
-		git_error_set(GIT_ERROR_CONFIG, "invalid oid abbreviation setting: '%d'", len);
-		return -1;
+	if ((size_t)len == oid_hexsize) {
+		if ((error = git_oid_cpy(&id, &obj->cached.oid)) < 0) {
+			return error;
+		}
 	}
 
 	if ((error = git_repository_odb(&odb, repo)) < 0)
@@ -661,7 +662,7 @@ int git_object__parse_oid_header(
 	if (buffer[header_len + sha_len] != '\n')
 		return -1;
 
-	if (git_oid__fromstr(oid, buffer + header_len, oid_type) < 0)
+	if (git_oid_from_prefix(oid, buffer + header_len, sha_len, oid_type) < 0)
 		return -1;
 
 	*buffer_out = buffer + (header_len + sha_len + 1);

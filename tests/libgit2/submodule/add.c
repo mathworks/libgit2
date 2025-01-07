@@ -60,7 +60,7 @@ void test_submodule_add__url_absolute(void)
 
 	/* Verify gitdir path is relative */
 	cl_git_pass(git_futils_readbuffer(&dot_git_content, "submod2/" "sm_libgit2" "/.git"));
-	cl_assert_equal_s("gitdir: ../.git/modules/sm_libgit2/", dot_git_content.ptr);
+	cl_assert_equal_s("gitdir: ../.git/modules/sm_libgit2/\n", dot_git_content.ptr);
 
 	git_repository_free(repo);
 	git_str_dispose(&dot_git_content);
@@ -139,7 +139,7 @@ static void test_add_entry(
 {
 	git_index_entry entry = {{0}};
 
-	cl_git_pass(git_oid__fromstr(&entry.id, idstr, GIT_OID_SHA1));
+	cl_git_pass(git_oid_from_string(&entry.id, idstr, GIT_OID_SHA1));
 
 	entry.path = path;
 	entry.mode = mode;

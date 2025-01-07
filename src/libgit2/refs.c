@@ -835,17 +835,20 @@ static int is_valid_ref_char(char ch)
 	}
 }
 
-static int ensure_segment_validity(const char *name, char may_contain_glob)
+static int ensure_segment_validity(const char *name, char may_contain_glob, bool allow_caret_prefix)
 {
 	const char *current = name;
+	const char *start = current;
 	char prev = '\0';
 	const int lock_len = (int)strlen(GIT_FILELOCK_EXTENSION);
 	int segment_len;
 
 	if (*current == '.')
 		return -1; /* Refname starts with "." */
+	if (allow_caret_prefix && *current == '^')
+		start++;
 
-	for (current = name; ; current++) {
+	for (current = start; ; current++) {
 		if (*current == '\0' || *current == '/')
 			break;
 
@@ -877,7 +880,7 @@ static int ensure_segment_validity(const char *name, char may_contain_glob)
 	return segment_len;
 }
 
-static bool is_all_caps_and_underscore(const char *name, size_t len)
+static bool is_valid_normalized_name(const char *name, size_t len)
 {
 	size_t i;
 	char c;
@@ -888,6 +891,9 @@ static bool is_all_caps_and_underscore(const char *name, size_t len)
 	for (i = 0; i < len; i++)
 	{
 		c = name[i];
+		if (i == 0 && c == '^')
+			continue; /* The first character is allowed to be "^" for negative refspecs */
+
 		if ((c < 'A' || c > 'Z') && c != '_')
 			return false;
 	}
@@ -908,9 +914,10 @@ int git_reference__normalize_name(
 	int segment_len, segments_count = 0, error = GIT_EINVALIDSPEC;
 	unsigned int process_flags;
 	bool normalize = (buf != NULL);
+	bool allow_caret_prefix = true;
 	bool validate = (flags & GIT_REFERENCE_FORMAT__VALIDATION_DISABLE) == 0;
 
-#ifdef GIT_USE_ICONV
+#ifdef GIT_I18N_ICONV
 	git_fs_path_iconv_t ic = GIT_PATH_ICONV_INIT;
 #endif
 
@@ -925,7 +932,7 @@ int git_reference__normalize_name(
 	if (normalize)
 		git_str_clear(buf);
 
-#ifdef GIT_USE_ICONV
+#ifdef GIT_I18N_ICONV
 	if ((flags & GIT_REFERENCE_FORMAT__PRECOMPOSE_UNICODE) != 0) {
 		size_t namelen = strlen(current);
 		if ((error = git_fs_path_iconv_init_precompose(&ic)) < 0 ||
@@ -945,7 +952,7 @@ int git_reference__normalize_name(
 	while (true) {
 		char may_contain_glob = process_flags & GIT_REFERENCE_FORMAT_REFSPEC_PATTERN;
 
-		segment_len = ensure_segment_validity(current, may_contain_glob);
+		segment_len = ensure_segment_validity(current, may_contain_glob, allow_caret_prefix);
 		if (segment_len < 0)
 			goto cleanup;
 
@@ -981,6 +988,12 @@ int git_reference__normalize_name(
 			break;
 
 		current += segment_len + 1;
+
+		/*
+		 * A caret prefix is only allowed in the first segment to signify a
+		 * negative refspec.
+		 */
+		allow_caret_prefix = false;
 	}
 
 	/* A refname can not be empty */
@@ -1000,12 +1013,12 @@ int git_reference__normalize_name(
 
 	if ((segments_count == 1 ) &&
 	    !(flags & GIT_REFERENCE_FORMAT_REFSPEC_SHORTHAND) &&
-		!(is_all_caps_and_underscore(name, (size_t)segment_len) ||
+		!(is_valid_normalized_name(name, (size_t)segment_len) ||
 			((flags & GIT_REFERENCE_FORMAT_REFSPEC_PATTERN) && !strcmp("*", name))))
 			goto cleanup;
 
 	if ((segments_count > 1)
-		&& (is_all_caps_and_underscore(name, strchr(name, '/') - name)))
+		&& (is_valid_normalized_name(name, strchr(name, '/') - name)))
 			goto cleanup;
 
 	error = 0;
@@ -1019,7 +1032,7 @@ cleanup:
 	if (error && normalize)
 		git_str_dispose(buf);
 
-#ifdef GIT_USE_ICONV
+#ifdef GIT_I18N_ICONV
 	git_fs_path_iconv_clear(&ic);
 #endif
 
@@ -1063,9 +1076,13 @@ int git_reference_cmp(
 	const git_reference *ref2)
 {
 	git_reference_t type1, type2;
+	int ret;
 
 	GIT_ASSERT_ARG(ref1);
 	GIT_ASSERT_ARG(ref2);
+
+	if ((ret = strcmp(ref1->name, ref2->name)) != 0)
+		return ret;
 
 	type1 = git_reference_type(ref1);
 	type2 = git_reference_type(ref2);

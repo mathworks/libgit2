@@ -338,7 +338,7 @@ static int write_object(
 				goto done;
 
 		data_len = po->delta_size;
-		type = GIT_OBJECT_REF_DELTA;
+		type = GIT_PACKFILE_REF_DELTA;
 	} else {
 		if ((error = git_odb_read(&obj, pb->odb, &po->id)) < 0)
 			goto done;
@@ -354,7 +354,7 @@ static int write_object(
 	    (error = git_hash_update(&pb->ctx, hdr, hdr_len)) < 0)
 		goto done;
 
-	if (type == GIT_OBJECT_REF_DELTA) {
+	if (type == GIT_PACKFILE_REF_DELTA) {
 		if ((error = write_cb(po->delta->id.id, oid_size, cb_data)) < 0 ||
 		    (error = git_hash_update(&pb->ctx, po->delta->id.id, oid_size)) < 0)
 			goto done;
@@ -1442,8 +1442,9 @@ int git_packbuilder_write(
 #ifdef GIT_EXPERIMENTAL_SHA256
 	opts.mode = mode;
 	opts.odb = pb->odb;
+	opts.oid_type = GIT_OID_SHA1;
 
-	error = git_indexer_new(&indexer, path, GIT_OID_SHA1, &opts);
+	error = git_indexer_new(&indexer, path, &opts);
 #else
 	error = git_indexer_new(&indexer, path, mode, pb->odb, &opts);
 #endif

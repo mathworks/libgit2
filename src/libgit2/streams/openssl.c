@@ -9,7 +9,7 @@
 #include "streams/openssl_legacy.h"
 #include "streams/openssl_dynamic.h"
 
-#ifdef GIT_OPENSSL
+#if defined(GIT_HTTPS_OPENSSL) || defined(GIT_HTTPS_OPENSSL_DYNAMIC)
 
 #include <ctype.h>
 
@@ -29,7 +29,7 @@
 # include <netinet/in.h>
 #endif
 
-#ifndef GIT_OPENSSL_DYNAMIC
+#ifndef GIT_HTTPS_OPENSSL_DYNAMIC
 # include <openssl/ssl.h>
 # include <openssl/err.h>
 # include <openssl/x509v3.h>
@@ -40,7 +40,7 @@ extern char *git__ssl_ciphers;
 
 SSL_CTX *git__ssl_ctx;
 
-#define GIT_SSL_DEFAULT_CIPHERS "ECDHE-ECDSA-AES128-GCM-SHA256:ECDHE-RSA-AES128-GCM-SHA256:ECDHE-ECDSA-AES256-GCM-SHA384:ECDHE-RSA-AES256-GCM-SHA384:DHE-RSA-AES128-GCM-SHA256:DHE-DSS-AES128-GCM-SHA256:DHE-RSA-AES256-GCM-SHA384:DHE-DSS-AES256-GCM-SHA384:ECDHE-ECDSA-AES128-SHA256:ECDHE-RSA-AES128-SHA256:ECDHE-ECDSA-AES128-SHA:ECDHE-RSA-AES128-SHA:ECDHE-ECDSA-AES256-SHA384:ECDHE-RSA-AES256-SHA384:ECDHE-ECDSA-AES256-SHA:ECDHE-RSA-AES256-SHA:DHE-RSA-AES128-SHA256:DHE-RSA-AES256-SHA256:DHE-RSA-AES128-SHA:DHE-RSA-AES256-SHA:DHE-DSS-AES128-SHA256:DHE-DSS-AES256-SHA256:DHE-DSS-AES128-SHA:DHE-DSS-AES256-SHA:AES128-GCM-SHA256:AES256-GCM-SHA384:AES128-SHA256:AES256-SHA256:AES128-SHA:AES256-SHA"
+#define GIT_SSL_DEFAULT_CIPHERS "TLS_AES_128_GCM_SHA256:TLS_AES_256_GCM_SHA384:TLS_CHACHA20_POLY1305_SHA256:ECDHE-ECDSA-AES128-GCM-SHA256:ECDHE-RSA-AES128-GCM-SHA256:ECDHE-ECDSA-AES256-GCM-SHA384:ECDHE-RSA-AES256-GCM-SHA384:ECDHE-ECDSA-CHACHA20-POLY1305:ECDHE-RSA-CHACHA20-POLY1305:DHE-RSA-AES128-GCM-SHA256:DHE-RSA-AES256-GCM-SHA384:DHE-RSA-CHACHA20-POLY1305"
 
 
 static BIO_METHOD *git_stream_bio_method;
@@ -64,7 +64,7 @@ static void shutdown_ssl(void)
 }
 
 #ifdef VALGRIND
-# if !defined(GIT_OPENSSL_LEGACY) && !defined(GIT_OPENSSL_DYNAMIC)
+# if !defined(GIT_HTTPS_OPENSSL_LEGACY) && !defined(GIT_HTTPS_OPENSSL_DYNAMIC)
 
 static void *git_openssl_malloc(size_t bytes, const char *file, int line)
 {
@@ -86,7 +86,7 @@ static void git_openssl_free(void *mem, const char *file, int line)
 	GIT_UNUSED(line);
 	git__free(mem);
 }
-# else /* !GIT_OPENSSL_LEGACY && !GIT_OPENSSL_DYNAMIC */
+# else /* !GIT_HTTPS_OPENSSL_LEGACY && !GIT_HTTPS_OPENSSL_DYNAMIC */
 static void *git_openssl_malloc(size_t bytes)
 {
 	return git__calloc(1, bytes);
@@ -101,12 +101,15 @@ static void git_openssl_free(void *mem)
 {
 	git__free(mem);
 }
-# endif /* !GIT_OPENSSL_LEGACY && !GIT_OPENSSL_DYNAMIC */
+# endif /* !GIT_HTTPS_OPENSSL_LEGACY && !GIT_HTTPS_OPENSSL_DYNAMIC */
 #endif /* VALGRIND */
 
 static int openssl_init(void)
 {
-	long ssl_opts = SSL_OP_NO_SSLv2 | SSL_OP_NO_SSLv3;
+	long ssl_opts = SSL_OP_NO_SSLv2 |
+	                SSL_OP_NO_SSLv3 |
+	                SSL_OP_NO_TLSv1 |
+	                SSL_OP_NO_TLSv1_1;
 	const char *ciphers = git__ssl_ciphers;
 #ifdef VALGRIND
 	static bool allocators_initialized = false;
@@ -135,10 +138,10 @@ static int openssl_init(void)
 	OPENSSL_init_ssl(0, NULL);
 
 	/*
-	 * Load SSLv{2,3} and TLSv1 so that we can talk with servers
-	 * which use the SSL hellos, which are often used for
-	 * compatibility. We then disable SSL so we only allow OpenSSL
-	 * to speak TLSv1 to perform the encryption itself.
+	 * Despite the name SSLv23_method, this is actually a version-
+	 * flexible context, which honors the protocol versions
+	 * specified in `ssl_opts`. So we only support TLSv1.2 and
+	 * higher.
 	 */
 	if (!(git__ssl_ctx = SSL_CTX_new(SSLv23_method())))
 		goto error;
@@ -178,7 +181,7 @@ bool openssl_initialized;
 
 int git_openssl_stream_global_init(void)
 {
-#ifndef GIT_OPENSSL_DYNAMIC
+#ifndef GIT_HTTPS_OPENSSL_DYNAMIC
 	return openssl_init();
 #else
 	if (git_mutex_init(&openssl_mutex) != 0)
@@ -190,7 +193,7 @@ int git_openssl_stream_global_init(void)
 
 static int openssl_ensure_initialized(void)
 {
-#ifdef GIT_OPENSSL_DYNAMIC
+#ifdef GIT_HTTPS_OPENSSL_DYNAMIC
 	int error = 0;
 
 	if (git_mutex_lock(&openssl_mutex) != 0)
@@ -211,7 +214,7 @@ static int openssl_ensure_initialized(void)
 #endif
 }
 
-#if !defined(GIT_OPENSSL_LEGACY) && !defined(GIT_OPENSSL_DYNAMIC)
+#if !defined(GIT_HTTPS_OPENSSL_LEGACY) && !defined(GIT_HTTPS_OPENSSL_DYNAMIC)
 int git_openssl_set_locking(void)
 {
 # ifdef GIT_THREADS

@@ -1959,7 +1959,7 @@ static int update_tips_for_spec(
 	if (git_oid__is_hexstr(spec->src, remote->repo->oid_type)) {
 		git_oid id;
 
-		if ((error = git_oid__fromstr(&id, spec->src, remote->repo->oid_type)) < 0)
+		if ((error = git_oid_from_string(&id, spec->src, remote->repo->oid_type)) < 0)
 			goto on_error;
 
 		if (spec->dst &&
@@ -2628,17 +2628,21 @@ done:
 git_refspec *git_remote__matching_refspec(git_remote *remote, const char *refname)
 {
 	git_refspec *spec;
+	git_refspec *match = NULL;
 	size_t i;
 
 	git_vector_foreach(&remote->active_refspecs, i, spec) {
 		if (spec->push)
 			continue;
 
-		if (git_refspec_src_matches(spec, refname))
-			return spec;
+		if (git_refspec_src_matches_negative(spec, refname))
+			return NULL;
+
+		if (git_refspec_src_matches(spec, refname) && match == NULL)
+			match = spec;
 	}
 
-	return NULL;
+	return match;
 }
 
 git_refspec *git_remote__matching_dst_refspec(git_remote *remote, const char *refname)

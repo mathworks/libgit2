@@ -449,7 +449,7 @@ int git_midx_entry_find(
 		return midx_error("invalid index into the packfile names table");
 	e->pack_index = pack_index;
 	e->offset = offset;
-	git_oid__fromraw(&e->sha1, current, idx->oid_type);
+	git_oid_from_raw(&e->sha1, current, idx->oid_type);
 	return 0;
 }
 
@@ -467,7 +467,7 @@ int git_midx_foreach_entry(
 	oid_size = git_oid_size(idx->oid_type);
 
 	for (i = 0; i < idx->num_objects; ++i) {
-		if ((error = git_oid__fromraw(&oid, &idx->oid_lookup[i * oid_size], idx->oid_type)) < 0)
+		if ((error = git_oid_from_raw(&oid, &idx->oid_lookup[i * oid_size], idx->oid_type)) < 0)
 			return error;
 
 		if ((error = cb(&oid, data)) != 0)
@@ -508,20 +508,28 @@ static int packfile__cmp(const void *a_, const void *b_)
 }
 
 int git_midx_writer_new(
-		git_midx_writer **out,
-		const char *pack_dir
+	git_midx_writer **out,
+	const char *pack_dir
 #ifdef GIT_EXPERIMENTAL_SHA256
-		, git_oid_t oid_type
+	, git_midx_writer_options *opts
 #endif
 		)
 {
 	git_midx_writer *w;
+	git_oid_t oid_type;
 
-#ifndef GIT_EXPERIMENTAL_SHA256
-	git_oid_t oid_type = GIT_OID_SHA1;
+	GIT_ASSERT_ARG(out && pack_dir);
+
+#ifdef GIT_EXPERIMENTAL_SHA256
+	GIT_ERROR_CHECK_VERSION(opts,
+		GIT_MIDX_WRITER_OPTIONS_VERSION,
+		"git_midx_writer_options");
+
+	oid_type = opts && opts->oid_type ? opts->oid_type : GIT_OID_DEFAULT;
+	GIT_ASSERT_ARG(git_oid_type_is_valid(oid_type));
+#else
+	oid_type = GIT_OID_SHA1;
 #endif
-
-	GIT_ASSERT_ARG(out && pack_dir && oid_type);
 
 	w = git__calloc(1, sizeof(git_midx_writer));
 	GIT_ERROR_CHECK_ALLOC(w);

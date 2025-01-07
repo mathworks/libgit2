@@ -37,17 +37,10 @@ int LLVMFuzzerInitialize(int *argc, char ***argv)
 		abort();
 	}
 
-#ifdef GIT_EXPERIMENTAL_SHA256
-	if (git_odb_new(&odb, NULL) < 0) {
-		fprintf(stderr, "Failed to create the odb\n");
-		abort();
-	}
-#else
 	if (git_odb_new(&odb) < 0) {
 		fprintf(stderr, "Failed to create the odb\n");
 		abort();
 	}
-#endif
 
 	if (git_mempack_new(&mempack) < 0) {
 		fprintf(stderr, "Failed to create the mempack\n");
@@ -84,7 +77,7 @@ int LLVMFuzzerTestOneInput(const uint8_t *data, size_t size)
 	}
 
 #ifdef GIT_EXPERIMENTAL_SHA256
-	error = git_indexer_new(&indexer, ".", GIT_OID_SHA1, NULL);
+	error = git_indexer_new(&indexer, ".", NULL);
 #else
 	error = git_indexer_new(&indexer, ".", 0, odb, NULL);
 #endif
