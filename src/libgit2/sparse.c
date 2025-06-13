@@ -232,7 +232,7 @@ int git_sparse_checkout_list(git_strarray *patterns, git_repository *repo) {
 
 done:
     git_sparse__free(&sparse);
-    git_vector_free(&patternlist);
+    git_vector_dispose(&patternlist);
 
 
     return error;
@@ -312,7 +312,7 @@ int git_sparse_checkout__reapply(git_repository *repo, git_sparse *sparse)
 
 done:
 	git_index_free(index);
-	git_vector_free(&paths_to_checkout);
+	git_vector_dispose(&paths_to_checkout);
 
 	return error;
 }
@@ -442,7 +442,7 @@ int git_sparse_checkout_set(
 done:
     git_config_free(cfg);
     git_sparse__free(&sparse);
-    git_vector_free(&patternlist);
+    git_vector_dispose(&patternlist);
 
     return error;
 }
@@ -483,8 +483,8 @@ int git_sparse_checkout__restore_wd(git_repository *repo)
 
 done:
 	git_sparse__free(&sparse);
-	git_vector_free(&old_patterns);
-	git_vector_free(&patterns);
+	git_vector_dispose(&old_patterns);
+	git_vector_dispose(&patterns);
 	return error;
 }
 
@@ -542,8 +542,8 @@ int git_sparse_checkout__add(
         goto done;
 
 done:
-    git_vector_free(&existing_patterns);
-    git_vector_free(&new_patterns);
+    git_vector_dispose(&existing_patterns);
+    git_vector_dispose(&new_patterns);
 
     return error;
 }
@@ -596,7 +596,7 @@ int git_sparse_checkout_add(
 done:
     git_config_free(cfg);
 	git_sparse__free(&sparse);
-	git_vector_free(&patternlist);
+	git_vector_dispose(&patternlist);
 
     return error;
 }
