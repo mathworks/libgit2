@@ -55,6 +55,8 @@ typedef enum {
 	GIT_CONFIGMAP_PROTECTNTFS,      /* core.protectNTFS */
 	GIT_CONFIGMAP_FSYNCOBJECTFILES, /* core.fsyncObjectFiles */
 	GIT_CONFIGMAP_LONGPATHS,        /* core.longpaths */
+	GIT_CONFIGMAP_SPARSECHECKOUT,   /* core.sparseCheckout */
+	GIT_CONFIGMAP_SPARSECHECKOUTCONE,   /* core.sparseCheckoutCone */
 	GIT_CONFIGMAP_CACHE_MAX
 } git_configmap_item;
 
@@ -123,7 +125,11 @@ typedef enum {
 	/* core.fsyncObjectFiles */
 	GIT_FSYNCOBJECTFILES_DEFAULT = GIT_CONFIGMAP_FALSE,
 	/* core.longpaths */
-	GIT_LONGPATHS_DEFAULT = GIT_CONFIGMAP_FALSE
+	GIT_LONGPATHS_DEFAULT = GIT_CONFIGMAP_FALSE,
+	/* core.sparsecheckout */
+	GIT_SPARSECHECKOUT_DEFAULT = GIT_CONFIGMAP_FALSE,
+	/* core.sparsecheckoutcone */
+	GIT_SPARSECHECKOUTCONE_DEFAULT = GIT_CONFIGMAP_TRUE
 } git_configmap_value;
 
 /* internal repository init flags */
