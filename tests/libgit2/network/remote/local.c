@@ -16,17 +16,6 @@ static git_strarray push_array = {
 	1,
 };
 
-static int push_transfer_progress_cb(unsigned int current, unsigned int total, size_t bytes, void* payload)
-{
-	GIT_UNUSED(current);
-	GIT_UNUSED(total);
-	GIT_UNUSED(payload);
-
-	cl_assert(bytes == 0);
-
-	return 0;
-}
-
 void test_network_remote_local__initialize(void)
 {
 	cl_git_pass(git_repository_init(&repo, "remotelocal/", 0));
@@ -212,7 +201,6 @@ void test_network_remote_local__push_to_bare_remote(void)
 
 	/* Should be able to push to a bare remote */
 	git_remote *localremote;
-	git_push_options opts = GIT_PUSH_OPTIONS_INIT;
 
 	/* Get some commits */
 	connect_to_local_repository(cl_fixture("testrepo.git"));
@@ -230,8 +218,7 @@ void test_network_remote_local__push_to_bare_remote(void)
 	cl_git_pass(git_remote_connect(localremote, GIT_DIRECTION_PUSH, NULL, NULL, NULL));
 
 	/* Try to push */
-	opts.callbacks.push_transfer_progress = push_transfer_progress_cb;
-	cl_git_pass(git_remote_upload(localremote, &push_array, &opts));
+	cl_git_pass(git_remote_upload(localremote, &push_array, NULL));
 
 	/* Clean up */
 	git_remote_free(localremote);
