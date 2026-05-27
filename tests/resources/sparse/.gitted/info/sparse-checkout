@@ -1,0 +1,15 @@
+
+# commentA
+
+/*
+# commentB
+
+!/*/
+/c/
+
+!/c/*/
+
+# commentC
+/a/
+# commentD
+/c/d/
