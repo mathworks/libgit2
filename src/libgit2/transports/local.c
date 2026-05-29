@@ -41,6 +41,9 @@ typedef struct {
 	git_vector refs;
 	unsigned connected : 1,
 		have_refs : 1;
+#ifdef GIT_EXPERIMENTAL_SHA256
+	git_oid_t oid_type;
+#endif
 } transport_local;
 
 static void free_head(git_remote_head *head)
@@ -77,7 +80,7 @@ static int add_ref(transport_local *t, const char *name)
 	error = git_reference_resolve(&resolved, ref);
 	if (error < 0) {
 		git_reference_free(ref);
-		if (!strcmp(name, GIT_HEAD_FILE) && error == GIT_ENOTFOUND) {
+		if (!strcmp(name, GIT_HEAD_REF) && error == GIT_ENOTFOUND) {
 			/* This is actually okay.  Empty repos often have a HEAD that
 			 * points to a nonexistent "refs/heads/master". */
 			git_error_clear();
@@ -169,7 +172,7 @@ static int store_refs(transport_local *t)
 	git__tsort((void **)ref_names.strings, ref_names.count, &git__strcmp_cb);
 
 	/* Add HEAD iff direction is fetch */
-	if (t->direction == GIT_DIRECTION_FETCH && add_ref(t, GIT_HEAD_FILE) < 0)
+	if (t->direction == GIT_DIRECTION_FETCH && add_ref(t, GIT_HEAD_REF) < 0)
 		goto on_error;
 
 	for (i = 0; i < ref_names.count; ++i) {
@@ -231,6 +234,10 @@ static int local_connect(
 
 	t->repo = repo;
 
+#ifdef GIT_EXPERIMENTAL_SHA256
+	t->oid_type = repo->oid_type;
+#endif
+
 	if (store_refs(t) < 0)
 		return -1;
 
@@ -267,7 +274,7 @@ static int local_oid_type(git_oid_t *out, git_transport *transport)
 {
 	transport_local *t = (transport_local *)transport;
 
-	*out = t->repo->oid_type;
+	*out = t->oid_type;
 
 	return 0;
 }
