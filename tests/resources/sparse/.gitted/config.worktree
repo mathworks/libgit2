@@ -1,0 +1,5 @@
+[core]
+	sparseCheckout = true
+	sparseCheckoutCone = true
+[index]
+	sparse = false

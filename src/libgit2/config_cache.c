@@ -86,6 +86,8 @@ static struct map_data _configmaps[] = {
 	{"core.protectntfs", NULL, 0, GIT_PROTECTNTFS_DEFAULT },
 	{"core.fsyncobjectfiles", NULL, 0, GIT_FSYNCOBJECTFILES_DEFAULT },
 	{"core.longpaths", NULL, 0, GIT_LONGPATHS_DEFAULT },
+	{"core.sparsecheckout", NULL, 0, GIT_SPARSECHECKOUT_DEFAULT },
+	{"core.sparsecheckoutcone", NULL, 0, GIT_SPARSECHECKOUTCONE_DEFAULT },
 };
 
 int git_config__configmap_lookup(int *out, git_config *config, git_configmap_item item)
