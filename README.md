@@ -488,7 +488,7 @@ Here are the bindings to libgit2 that are currently available:
 * C++
     * libqgit2, Qt bindings <https://projects.kde.org/projects/playground/libs/libqgit2/repository/>
 * Chicken Scheme
-    * chicken-git <https://wiki.call-cc.org/egg/git>
+    * chicken-git <https://wiki.call-cc.org/eggs>
 * D
     * dlibgit <https://github.com/s-ludwig/dlibgit>
 * Delphi
