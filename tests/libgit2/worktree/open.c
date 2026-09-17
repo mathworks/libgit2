@@ -125,54 +125,20 @@ void test_worktree_open__open_from_nonworktree_fails(void)
 	cl_git_fail(git_worktree_open_from_repository(&wt, fixture.repo));
 }
 
-#ifdef GIT_WIN32
-/* Rewrite a posix path in native Win32 form: "/d/foo" -> "d:\foo". */
-static void unposix_path(git_str *path)
-{
-	char *src, *tgt;
-
-	src = tgt = path->ptr;
-
-	if (src[0] == '/' && git__isalpha(src[1]) && src[2] == '/') {
-		*tgt++ = src[1];
-		*tgt++ = ':';
-		*tgt++ = '\\';
-		src += 3;
-	}
-
-	while (*src) {
-		*tgt++ = (*src == '/') ? '\\' : *src;
-		src++;
-	}
-
-	*tgt = '\0';
-}
-#endif
-
-/*
- * Tools that build worktrees with native Win32 separators (Google's `repo`,
- * for instance) write backslashes into the "gitdir" file. We already tolerate
- * that in the `.git` gitlink, so tolerate it here too: without normalization
- * "C:\...\.git" has no '/' for dirname() to find and collapses to ".", leaving
- * the repository with a relative, bogus workdir.
- */
 void test_worktree_open__gitdir_with_backslashes(void)
 {
 #ifdef GIT_WIN32
-	git_str gitdir_file = GIT_STR_INIT, gitlink = GIT_STR_INIT,
-		workdir = GIT_STR_INIT;
+	git_str gitdir_file = GIT_STR_INIT, workdir = GIT_STR_INIT;
 	git_repository *wt;
 
-	/* cl_git_sandbox_path returns a static buffer, so copy each one out. */
 	cl_git_pass(git_str_sets(&gitdir_file, cl_git_sandbox_path(0, COMMON_REPO,
 		".git", "worktrees", WORKTREE_REPO, "gitdir", NULL)));
-	cl_git_pass(git_str_sets(&gitlink,
-		cl_git_sandbox_path(0, WORKTREE_REPO, ".git", NULL)));
 	cl_git_pass(git_str_sets(&workdir,
 		cl_git_sandbox_path(1, WORKTREE_REPO, NULL)));
 
-	unposix_path(&gitlink);
-	cl_git_rewritefile(gitdir_file.ptr, gitlink.ptr);
+	/* The pointer the fixture ships, respelled with Win32 separators. */
+	cl_git_rewritefile(gitdir_file.ptr,
+		"..\\..\\..\\..\\" WORKTREE_REPO "\\.git");
 
 	cl_git_pass(git_repository_open(&wt, WORKTREE_REPO));
 	cl_assert(wt->is_worktree);
@@ -180,7 +146,6 @@ void test_worktree_open__gitdir_with_backslashes(void)
 
 	git_repository_free(wt);
 	git_str_dispose(&gitdir_file);
-	git_str_dispose(&gitlink);
 	git_str_dispose(&workdir);
 #endif
 }
