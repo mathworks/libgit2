@@ -198,7 +198,7 @@ static int set_certificate_lookup_error(DWORD status)
 	int error = -1;
 	git_str msg = GIT_STR_INIT;
 
-	git_str_printf(&msg, "certificate error (%d): ", status);
+	git_str_printf(&msg, "certificate error (0x%08lx): ", (unsigned long)status);
 
 	if (status & CERT_TRUST_IS_NOT_TIME_VALID) {
 		certificate_error_append_message(
@@ -258,10 +258,9 @@ static int set_certificate_lookup_error(DWORD status)
 	}
 
 	if (error == -1)
-		git_str_printf(
-		        &msg, "unknown certificate lookup failure: %d", status);
+		git_str_puts(&msg, "unknown certificate lookup failure");
 
-	git_error_set(GIT_ERROR_SSL, git_str_cstr(&msg));
+	git_error_set(GIT_ERROR_SSL, "%s", git_str_cstr(&msg));
 	git_str_dispose(&msg);
 
 	return error;
@@ -341,7 +340,9 @@ static int check_certificate(schannel_stream* st)
 
 	memset(&cert_chain_parameters, 0, sizeof(CERT_CHAIN_PARA));
 	cert_chain_parameters.cbSize = sizeof(CERT_CHAIN_PARA);
-	
+
+	memset(&ssl_policy_parameters, 0, sizeof(SSL_EXTRA_CERT_CHAIN_POLICY_PARA));
+
 	memset(&cert_policy_status, 0, sizeof(CERT_CHAIN_POLICY_STATUS));
 	cert_policy_status.cbSize = sizeof(CERT_CHAIN_POLICY_STATUS);
 
@@ -380,6 +381,13 @@ static int check_certificate(schannel_stream* st)
 	ssl_policy_parameters.cbSize = sizeof(SSL_EXTRA_CERT_CHAIN_POLICY_PARA);
 	ssl_policy_parameters.dwAuthType = AUTHTYPE_SERVER;
 	ssl_policy_parameters.pwszServerName = st->host_w;
+
+	/*
+	 * Best-effort revocation checking (like Git for Windows): ignore
+	 * errors when revocation status is unknown or the server is offline.
+	 * A revoked certificate is still an error.
+	 */
+	cert_policy_parameters.dwFlags = CERT_CHAIN_POLICY_IGNORE_ALL_REV_UNKNOWN_FLAGS;
 
 	if (!CertVerifyCertificateChainPolicy(CERT_CHAIN_POLICY_SSL,
 			st->cert_chain, &cert_policy_parameters,
